@@ -42,48 +42,7 @@ pushing this to GitHub and deploying it on free infrastructure.
 | `docs/`                | Architecture + deployment guides                              |
 | `render.yaml`          | Render Blueprint for one-click multi-service deploy            |
 
-## Run it locally (free, no signups, ~2 minutes)
 
-Requires Docker + Docker Compose.
-
-```bash
-git clone <your-fork-url>
-cd notification-system
-docker compose up --build
-```
-
-This starts:
-- `producer-service` → http://localhost:8081
-- `consumer-service` → http://localhost:8082
-- `websocket-gateway` → http://localhost:8083
-- Kafka UI (watch topics/messages live) → http://localhost:8085
-- Postgres on `5432`, Redis on `6379`, Kafka on `9092`
-
-Then open `frontend/index.html` directly in your browser (double-click it,
-or `open frontend/index.html` / `xdg-open frontend/index.html`). The default
-endpoint URLs in the page already point at `localhost`, so it works
-immediately. Type a `user id`, hit **connect**, then click one of the demo
-buttons — you'll see the event tail through the live feed in real time.
-
-To prove the architecture is real, open `frontend/index.html` in **two
-browser tabs** with the same user id, fire one event, and watch it land in
-both tabs — that's Redis pub/sub fanning the message out to every
-`websocket-gateway` subscriber, not the browser tabs talking to each other.
-
-## Try the API directly
-
-```bash
-# Trigger a notification
-curl -X POST http://localhost:8081/api/notifications \
-  -H "Content-Type: application/json" \
-  -d '{"userId":"alice","type":"ORDER_SHIPPED","title":"Shipped!","message":"Order #4821 is on its way"}'
-
-# Read history (Postgres)
-curl http://localhost:8082/api/notifications/alice
-
-# Unread count (Redis)
-curl http://localhost:8082/api/notifications/alice/unread-count
-```
 
 ## Tech stack
 
