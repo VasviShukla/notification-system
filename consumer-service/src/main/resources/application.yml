@@ -1,0 +1,78 @@
+server:
+  port: ${PORT:8082}
+
+spring:
+  application:
+    name: consumer-service
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/notifications}
+    username: ${DATABASE_USERNAME:notifuser}
+    password: ${DATABASE_PASSWORD:notifpass}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # Defaults to PLAINTEXT for local Docker Kafka / self-hosted Redpanda.
+    # Override via env vars for Confluent Cloud or another SASL_SSL provider
+    # (see DEPLOYMENT.md) - leave unset and these resolve to harmless no-ops.
+    security:
+      protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+    properties:
+      sasl.mechanism: ${KAFKA_SASL_MECHANISM:}
+      sasl.jaas.config: ${KAFKA_SASL_JAAS_CONFIG:}
+      # PEM-based mutual TLS (e.g. Aiven's free Kafka tier, which authenticates
+      # with a client certificate instead of SASL). Paste the raw contents of
+      # ca.pem / service.cert / service.key into these env vars. Harmless,
+      # unused config when left blank (e.g. local PLAINTEXT Kafka).
+      ssl.truststore.type: PEM
+      ssl.truststore.certificates: ${KAFKA_SSL_CA_CERT:}
+      ssl.keystore.type: PEM
+      ssl.keystore.certificate.chain: ${KAFKA_SSL_CLIENT_CERT:}
+      ssl.keystore.key: ${KAFKA_SSL_CLIENT_KEY:}
+    consumer:
+      group-id: notification-consumer-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl: ${REDIS_SSL:false}
+
+notification:
+  kafka:
+    topic: notifications
+  redis:
+    live-channel-prefix: "notif:live:"
+    history-key-prefix: "notif:history:"
+    unread-key-prefix: "notif:unread:"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    com.notifsys: INFO

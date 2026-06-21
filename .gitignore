@@ -1,0 +1,24 @@
+# Maven
+target/
+*.jar
+*.war
+!**/.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Env files (never commit real secrets)
+.env
+.env.local

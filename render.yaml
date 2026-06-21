@@ -1,0 +1,75 @@
+# Render Blueprint (render.yaml)
+# Deploy: push this repo to GitHub, then in Render: New -> Blueprint -> pick repo.
+# Render reads this file and creates all three services in one go.
+#
+# Free tier notes (verified mid-2026):
+#  - Each "free" web service gets 512MB RAM / 0.1 CPU and spins down after 15
+#    minutes idle (cold start ~30-60s on the next request). Fine for a portfolio
+#    demo, not for "always-on production".
+#  - Render's own free Postgres/Redis add-ons expire after ~30 days. This
+#    project deliberately points at Neon (Postgres) and Upstash (Redis)
+#    instead, which both have a no-expiry free tier. See DEPLOYMENT.md.
+
+services:
+  - type: web
+    name: notifsys-producer
+    runtime: docker
+    rootDir: producer-service
+    plan: free
+    envVars:
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false   # set to your Kafka provider's bootstrap address
+      - key: KAFKA_SECURITY_PROTOCOL
+        sync: false   # e.g. SSL for Aiven, SASL_SSL for Confluent
+      - key: KAFKA_SSL_CA_CERT
+        sync: false   # paste contents of ca.pem (Aiven client-cert auth)
+      - key: KAFKA_SSL_CLIENT_CERT
+        sync: false   # paste contents of service.cert
+      - key: KAFKA_SSL_CLIENT_KEY
+        sync: false   # paste contents of service.key
+
+  - type: web
+    name: notifsys-consumer
+    runtime: docker
+    rootDir: consumer-service
+    plan: free
+    envVars:
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        sync: false
+      - key: KAFKA_SECURITY_PROTOCOL
+        sync: false   # e.g. SSL for Aiven, SASL_SSL for Confluent
+      - key: KAFKA_SSL_CA_CERT
+        sync: false   # paste contents of ca.pem (Aiven client-cert auth)
+      - key: KAFKA_SSL_CLIENT_CERT
+        sync: false   # paste contents of service.cert
+      - key: KAFKA_SSL_CLIENT_KEY
+        sync: false   # paste contents of service.key
+      - key: DATABASE_URL
+        sync: false   # e.g. jdbc:postgresql://<neon-host>/<db>?sslmode=require
+      - key: DATABASE_USERNAME
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      - key: REDIS_HOST
+        sync: false   # e.g. <name>.upstash.io
+      - key: REDIS_PORT
+        value: "6379"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL
+        value: "true"
+
+  - type: web
+    name: notifsys-gateway
+    runtime: docker
+    rootDir: websocket-gateway
+    plan: free
+    envVars:
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        value: "6379"
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: REDIS_SSL
+        value: "true"

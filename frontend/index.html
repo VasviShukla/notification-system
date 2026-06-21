@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>notif:sys — control console</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+<style>
+  :root{
+    --bg:#14110d;
+    --panel:#1b1712;
+    --panel-raised:#221c15;
+    --border:#3a3024;
+    --text:#e8dfce;
+    --text-dim:#8a7f6a;
+    --amber:#ffb000;
+    --amber-dim:#7a5500;
+    --teal:#5ec8c0;
+    --teal-dim:#2e5f5b;
+    --red:#ff5d5d;
+    --mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:
+      radial-gradient(ellipse at top, #1d180f 0%, var(--bg) 60%);
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:14px;
+    line-height:1.5;
+    padding:28px;
+    min-height:100vh;
+  }
+  a{color:var(--teal);}
+
+  .topbar{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-bottom:22px;
+    border-bottom:1px solid var(--border);
+    padding-bottom:16px;
+  }
+  .topbar h1{
+    margin:0;
+    font-size:18px;
+    font-weight:600;
+    letter-spacing:0.02em;
+    color:var(--amber);
+  }
+  .topbar h1 span{color:var(--text-dim); font-weight:400;}
+  .topbar .sub{color:var(--text-dim); font-size:12px;}
+
+  .grid{
+    display:grid;
+    grid-template-columns: 340px 1fr;
+    gap:20px;
+    align-items:start;
+  }
+  @media (max-width: 880px){
+    .grid{grid-template-columns: 1fr;}
+  }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:6px;
+    overflow:hidden;
+  }
+  .panel-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 14px;
+    background:var(--panel-raised);
+    border-bottom:1px solid var(--border);
+    font-size:11px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+  }
+  .panel-body{padding:16px;}
+
+  .led{
+    width:8px; height:8px; border-radius:50%;
+    background:var(--red);
+    box-shadow:0 0 6px var(--red);
+    display:inline-block;
+    margin-right:6px;
+    transition: background .2s, box-shadow .2s;
+  }
+  .led.on{
+    background:var(--amber);
+    box-shadow:0 0 8px var(--amber), 0 0 18px var(--amber-dim);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse{
+    0%,100%{opacity:1;}
+    50%{opacity:.55;}
+  }
+
+  label{display:block; font-size:11px; color:var(--text-dim); margin-bottom:5px; text-transform:uppercase; letter-spacing:.06em;}
+  input[type=text]{
+    width:100%;
+    background:#0f0c08;
+    border:1px solid var(--border);
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:14px;
+    padding:8px 10px;
+    border-radius:4px;
+    margin-bottom:14px;
+  }
+  input[type=text]:focus{outline:none; border-color:var(--amber);}
+
+  button{
+    font-family:var(--mono);
+    font-size:13px;
+    cursor:pointer;
+    border-radius:4px;
+    border:1px solid var(--border);
+    background:var(--panel-raised);
+    color:var(--text);
+    padding:9px 12px;
+    width:100%;
+    margin-bottom:8px;
+    text-align:left;
+    transition: border-color .15s, color .15s;
+  }
+  button:hover{border-color:var(--teal); color:var(--teal);}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+  button.primary{
+    background:var(--amber);
+    color:#1a1305;
+    border-color:var(--amber);
+    font-weight:600;
+  }
+  button.primary:hover{color:#1a1305; border-color:var(--amber);}
+
+  .section-label{
+    font-size:11px; color:var(--text-dim); text-transform:uppercase;
+    letter-spacing:.06em; margin:18px 0 8px; border-top:1px solid var(--border); padding-top:14px;
+  }
+  .section-label:first-child{border-top:none; margin-top:0; padding-top:0;}
+
+  .badge{
+    display:inline-block; font-size:11px; padding:2px 7px; border-radius:3px;
+    border:1px solid var(--teal-dim); color:var(--teal); margin-left:6px;
+  }
+
+  /* live feed terminal */
+  .feed{
+    height:380px;
+    overflow-y:auto;
+    background:#0d0a06;
+    padding:12px 14px;
+    font-size:13px;
+  }
+  .feed::after{
+    content:"▋";
+    color:var(--amber);
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink{ 50%{opacity:0;} }
+  .feed .line{
+    margin-bottom:6px;
+    animation: slidein .18s ease-out;
+    word-break:break-word;
+  }
+  @keyframes slidein{
+    from{opacity:0; transform:translateY(-3px);}
+    to{opacity:1; transform:translateY(0);}
+  }
+  .feed .ts{color:var(--text-dim);}
+  .feed .tag{color:var(--teal); font-weight:600;}
+  .feed .tag.system{color:var(--text-dim);}
+  .feed .title{color:var(--amber); font-weight:600;}
+  .feed .empty{color:var(--text-dim); font-style:italic;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{text-align:left; padding:7px 8px; border-bottom:1px solid var(--border);}
+  th{color:var(--text-dim); font-size:11px; text-transform:uppercase; letter-spacing:.05em;}
+  td.type{color:var(--teal);}
+  tr.unread td.title{color:var(--amber);}
+
+  .row-actions{display:flex; gap:8px; margin-top:10px;}
+  .row-actions button{width:auto; flex:1;}
+
+  .footer-note{margin-top:24px; font-size:11px; color:var(--text-dim); border-top:1px solid var(--border); padding-top:14px;}
+  code{color:var(--teal); background:#0f0c08; padding:1px 4px; border-radius:3px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>notif:sys <span>// real-time notification control console</span></h1>
+  <div class="sub" id="endpointSummary">producer · consumer · ws-gateway</div>
+</div>
+
+<div class="grid">
+
+  <!-- LEFT: control panel -->
+  <div class="panel">
+    <div class="panel-head">
+      <span><span class="led" id="connLed"></span>connection</span>
+      <span id="connStatusText">disconnected</span>
+    </div>
+    <div class="panel-body">
+
+      <div class="section-label">endpoints</div>
+      <label for="producerUrl">producer-service base url</label>
+      <input type="text" id="producerUrl" value="http://localhost:8081" />
+      <label for="consumerUrl">consumer-service base url</label>
+      <input type="text" id="consumerUrl" value="http://localhost:8082" />
+      <label for="gatewayUrl">websocket-gateway base url</label>
+      <input type="text" id="gatewayUrl" value="http://localhost:8083" />
+
+      <div class="section-label">session</div>
+      <label for="userId">user id</label>
+      <input type="text" id="userId" value="alice" />
+      <button class="primary" id="connectBtn">connect</button>
+      <button id="disconnectBtn" disabled>disconnect</button>
+
+      <div class="section-label">fire a demo event <span class="badge">via producer</span></div>
+      <button id="btnOrder">📦 order shipped</button>
+      <button id="btnFriend">👋 friend request</button>
+      <button id="btnPayment">💸 payment received</button>
+
+      <div class="section-label">history <span class="badge">via consumer</span></div>
+      <button id="btnRefreshHistory">↻ refresh history</button>
+      <button id="btnMarkRead">✓ mark all read (unread: <span id="unreadCount">0</span>)</button>
+
+    </div>
+  </div>
+
+  <!-- RIGHT: live feed + history -->
+  <div>
+    <div class="panel">
+      <div class="panel-head">
+        <span>live feed</span>
+        <span id="feedCount">0 events</span>
+      </div>
+      <div class="feed" id="feed">
+        <div class="line empty">// waiting for connection — events pushed over Redis pub/sub will tail here in real time</div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:18px;">
+      <div class="panel-head">
+        <span>persisted history (postgres)</span>
+        <span id="historyCount">0 rows</span>
+      </div>
+      <div class="panel-body">
+        <table>
+          <thead>
+            <tr><th>time</th><th>type</th><th>title</th><th>message</th></tr>
+          </thead>
+          <tbody id="historyBody">
+            <tr><td colspan="4" class="empty">no rows loaded — click "refresh history"</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      This page talks to three independent services: <code>producer-service</code> publishes to Kafka,
+      <code>consumer-service</code> persists to Postgres + caches in Redis, <code>websocket-gateway</code>
+      relays Redis pub/sub messages to this browser over STOMP/WebSocket. Open this page twice with the
+      same user id in two tabs to see the fan-out pattern in action.
+    </div>
+  </div>
+
+</div>
+
+<script>
+let stompClient = null;
+let eventCount = 0;
+
+const el = id => document.getElementById(id);
+const feed = el('feed');
+
+function logLine(tag, html, isSystem){
+  if (feed.querySelector('.empty')) feed.innerHTML = '';
+  const time = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.className = 'line';
+  line.innerHTML = `<span class="ts">[${time}]</span> <span class="tag ${isSystem ? 'system' : ''}">${tag}</span> ${html}`;
+  feed.appendChild(line);
+  feed.scrollTop = feed.scrollHeight;
+  if (!isSystem){
+    eventCount++;
+    el('feedCount').textContent = eventCount + ' event' + (eventCount === 1 ? '' : 's');
+  }
+}
+
+function setConnected(isConnected){
+  el('connLed').classList.toggle('on', isConnected);
+  el('connStatusText').textContent = isConnected ? 'connected' : 'disconnected';
+  el('connectBtn').disabled = isConnected;
+  el('disconnectBtn').disabled = !isConnected;
+}
+
+el('connectBtn').addEventListener('click', () => {
+  const userId = el('userId').value.trim();
+  const gatewayUrl = el('gatewayUrl').value.trim();
+  if (!userId) { alert('enter a user id first'); return; }
+
+  const socket = new SockJS(gatewayUrl + '/ws');
+  stompClient = Stomp.over(socket);
+  stompClient.debug = null;
+
+  stompClient.connect({}, () => {
+    setConnected(true);
+    logLine('SYSTEM', `connected as <b>${userId}</b>, subscribing to /topic/notifications/${userId}`, true);
+    stompClient.subscribe('/topic/notifications/' + userId, message => {
+      try {
+        const evt = JSON.parse(message.body);
+        logLine('LIVE', `<span class="title">${evt.title}</span> — ${evt.message} <span style="color:var(--text-dim)">(${evt.type})</span>`);
+        refreshUnread();
+      } catch (e) {
+        logLine('LIVE', message.body);
+      }
+    });
+  }, () => {
+    setConnected(false);
+    logLine('SYSTEM', 'connection lost', true);
+  });
+});
+
+el('disconnectBtn').addEventListener('click', () => {
+  if (stompClient) stompClient.disconnect();
+  setConnected(false);
+  logLine('SYSTEM', 'disconnected', true);
+});
+
+async function fireDemo(path){
+  const userId = el('userId').value.trim();
+  const producerUrl = el('producerUrl').value.trim();
+  if (!userId) { alert('enter a user id first'); return; }
+  try {
+    const res = await fetch(`${producerUrl}/api/notifications/demo/${path}/${encodeURIComponent(userId)}`, { method: 'POST' });
+    if (!res.ok) throw new Error(await res.text());
+    logLine('SENT', `POST /demo/${path}/${userId} → accepted by producer-service, published to Kafka`, true);
+  } catch (e) {
+    logLine('ERROR', `could not reach producer-service: ${e.message}`, true);
+  }
+}
+
+el('btnOrder').addEventListener('click', () => fireDemo('order-shipped'));
+el('btnFriend').addEventListener('click', () => fireDemo('friend-request'));
+el('btnPayment').addEventListener('click', () => fireDemo('payment-received'));
+
+async function refreshHistory(){
+  const userId = el('userId').value.trim();
+  const consumerUrl = el('consumerUrl').value.trim();
+  if (!userId) return;
+  try {
+    const res = await fetch(`${consumerUrl}/api/notifications/${encodeURIComponent(userId)}?page=0&size=20`);
+    const data = await res.json();
+    const rows = data.content || [];
+    el('historyCount').textContent = rows.length + ' rows';
+    const tbody = el('historyBody');
+    tbody.innerHTML = '';
+    if (rows.length === 0){
+      tbody.innerHTML = '<tr><td colspan="4" class="empty">no notifications yet for this user</td></tr>';
+      return;
+    }
+    rows.forEach(n => {
+      const tr = document.createElement('tr');
+      if (!n.readStatus) tr.className = 'unread';
+      tr.innerHTML = `
+        <td>${new Date(n.createdAt).toLocaleString()}</td>
+        <td class="type">${n.type}</td>
+        <td class="title">${n.title}</td>
+        <td>${n.message}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    logLine('ERROR', `could not reach consumer-service: ${e.message}`, true);
+  }
+  refreshUnread();
+}
+
+async function refreshUnread(){
+  const userId = el('userId').value.trim();
+  const consumerUrl = el('consumerUrl').value.trim();
+  if (!userId) return;
+  try {
+    const res = await fetch(`${consumerUrl}/api/notifications/${encodeURIComponent(userId)}/unread-count`);
+    const data = await res.json();
+    el('unreadCount').textContent = data.unreadCount ?? 0;
+  } catch (e) { /* non-fatal */ }
+}
+
+el('btnRefreshHistory').addEventListener('click', refreshHistory);
+el('btnMarkRead').addEventListener('click', async () => {
+  const userId = el('userId').value.trim();
+  const consumerUrl = el('consumerUrl').value.trim();
+  await fetch(`${consumerUrl}/api/notifications/${encodeURIComponent(userId)}/read`, { method: 'POST' });
+  logLine('SYSTEM', 'marked all notifications read', true);
+  refreshHistory();
+});
+</script>
+
+</body>
+</html>
